@@ -1173,7 +1173,14 @@ fn init_with_revenue_pool_stores_address() {
 
     env.mock_all_auths();
     fund_vault(&usdc_admin, &vault_address, 500);
-    client.init(&owner, &usdc, &Some(500), &None, &Some(revenue_pool.clone()), &None);
+    client.init(
+        &owner,
+        &usdc,
+        &Some(500),
+        &None,
+        &Some(revenue_pool.clone()),
+        &None,
+    );
 
     assert_eq!(client.balance(), 500);
 }
@@ -1189,7 +1196,14 @@ fn deduct_with_revenue_pool_transfers_usdc() {
 
     env.mock_all_auths();
     fund_vault(&usdc_admin, &vault_address, 1000);
-    client.init(&owner, &usdc_address, &Some(1000), &None, &Some(revenue_pool.clone()), &None);
+    client.init(
+        &owner,
+        &usdc_address,
+        &Some(1000),
+        &None,
+        &Some(revenue_pool.clone()),
+        &None,
+    );
 
     client.deduct(&caller, &300, &None);
 
@@ -1208,12 +1222,25 @@ fn batch_deduct_with_revenue_pool_transfers_total_usdc() {
 
     env.mock_all_auths();
     fund_vault(&usdc_admin, &vault_address, 1000);
-    client.init(&owner, &usdc_address, &Some(1000), &None, &Some(revenue_pool.clone()), &None);
+    client.init(
+        &owner,
+        &usdc_address,
+        &Some(1000),
+        &None,
+        &Some(revenue_pool.clone()),
+        &None,
+    );
 
     let items = soroban_sdk::vec![
         &env,
-        DeductItem { amount: 200, request_id: None },
-        DeductItem { amount: 150, request_id: None },
+        DeductItem {
+            amount: 200,
+            request_id: None
+        },
+        DeductItem {
+            amount: 150,
+            request_id: None
+        },
     ];
     client.batch_deduct(&caller, &items);
 
