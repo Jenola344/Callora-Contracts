@@ -1158,3 +1158,112 @@ fn vault_full_lifecycle() {
     assert_eq!(final_meta.owner, owner);
     assert_eq!(final_meta.min_deposit, 10);
 }
+
+// ---------------------------------------------------------------------------
+// Revenue pool integration tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn init_with_revenue_pool_stores_address() {
+    let env = Env::default();
+    let owner = Address::generate(&env);
+    let revenue_pool = Address::generate(&env);
+    let (vault_address, client) = create_vault(&env);
+    let (usdc, _, usdc_admin) = create_usdc(&env, &owner);
+
+    env.mock_all_auths();
+    fund_vault(&usdc_admin, &vault_address, 500);
+    client.init(&owner, &usdc, &Some(500), &None, &Some(revenue_pool.clone()), &None);
+
+    assert_eq!(client.balance(), 500);
+}
+
+#[test]
+fn deduct_with_revenue_pool_transfers_usdc() {
+    let env = Env::default();
+    let owner = Address::generate(&env);
+    let caller = Address::generate(&env);
+    let revenue_pool = Address::generate(&env);
+    let (vault_address, client) = create_vault(&env);
+    let (usdc_address, usdc_client, usdc_admin) = create_usdc(&env, &owner);
+
+    env.mock_all_auths();
+    fund_vault(&usdc_admin, &vault_address, 1000);
+    client.init(&owner, &usdc_address, &Some(1000), &None, &Some(revenue_pool.clone()), &None);
+
+    client.deduct(&caller, &300, &None);
+
+    assert_eq!(client.balance(), 700);
+    assert_eq!(usdc_client.balance(&revenue_pool), 300);
+}
+
+#[test]
+fn batch_deduct_with_revenue_pool_transfers_total_usdc() {
+    let env = Env::default();
+    let owner = Address::generate(&env);
+    let caller = Address::generate(&env);
+    let revenue_pool = Address::generate(&env);
+    let (vault_address, client) = create_vault(&env);
+    let (usdc_address, usdc_client, usdc_admin) = create_usdc(&env, &owner);
+
+    env.mock_all_auths();
+    fund_vault(&usdc_admin, &vault_address, 1000);
+    client.init(&owner, &usdc_address, &Some(1000), &None, &Some(revenue_pool.clone()), &None);
+
+    let items = soroban_sdk::vec![
+        &env,
+        DeductItem { amount: 200, request_id: None },
+        DeductItem { amount: 150, request_id: None },
+    ];
+    client.batch_deduct(&caller, &items);
+
+    assert_eq!(client.balance(), 650);
+    assert_eq!(usdc_client.balance(&revenue_pool), 350);
+}
+
+// ---------------------------------------------------------------------------
+// set_settlement / get_settlement tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn set_settlement_stores_and_get_returns_address() {
+    let env = Env::default();
+    let owner = Address::generate(&env);
+    let settlement = Address::generate(&env);
+    let (_, client) = create_vault(&env);
+    let (usdc, _, _) = create_usdc(&env, &owner);
+
+    env.mock_all_auths();
+    client.init(&owner, &usdc, &None, &None, &None, &None);
+    client.set_settlement(&owner, &settlement);
+
+    assert_eq!(client.get_settlement(), settlement);
+}
+
+#[test]
+#[should_panic(expected = "unauthorized: caller is not admin")]
+fn set_settlement_unauthorized_panics() {
+    let env = Env::default();
+    let owner = Address::generate(&env);
+    let attacker = Address::generate(&env);
+    let settlement = Address::generate(&env);
+    let (_, client) = create_vault(&env);
+    let (usdc, _, _) = create_usdc(&env, &owner);
+
+    env.mock_all_auths();
+    client.init(&owner, &usdc, &None, &None, &None, &None);
+    client.set_settlement(&attacker, &settlement);
+}
+
+#[test]
+#[should_panic(expected = "settlement address not set")]
+fn get_settlement_before_set_panics() {
+    let env = Env::default();
+    let owner = Address::generate(&env);
+    let (_, client) = create_vault(&env);
+    let (usdc, _, _) = create_usdc(&env, &owner);
+
+    env.mock_all_auths();
+    client.init(&owner, &usdc, &None, &None, &None, &None);
+    client.get_settlement();
+}

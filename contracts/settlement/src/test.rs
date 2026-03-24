@@ -199,6 +199,22 @@ mod settlement_tests {
     }
 
     #[test]
+    #[should_panic(expected = "unauthorized: caller is not admin")]
+    fn test_set_vault_unauthorized() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let vault = Address::generate(&env);
+        let attacker = Address::generate(&env);
+        let new_vault = Address::generate(&env);
+        let addr = env.register(CalloraSettlement, ());
+        let client = CalloraSettlementClient::new(&env, &addr);
+        client.init(&admin, &vault);
+
+        client.set_vault(&attacker, &new_vault);
+    }
+
+    #[test]
     fn test_admin_can_receive_payment() {
         let env = Env::default();
         env.mock_all_auths();
