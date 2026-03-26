@@ -93,7 +93,6 @@ Emitted when existing metadata is updated via `update_metadata(offering_id, meta
 
 ## Not yet implemented
 
-- **OwnershipTransfer**: not present in current vault; would list old_owner, new_owner.
 - **Pause**: not present in current vault; would indicate pause state change.
 
 ---

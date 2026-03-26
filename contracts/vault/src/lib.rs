@@ -67,6 +67,11 @@ pub enum StorageKey {
 /// Default maximum single deduct amount when not set at init (no cap).
 pub const DEFAULT_MAX_DEDUCT: i128 = i128::MAX;
 
+/// Maximum length for offering metadata (e.g. IPFS CID or URI).
+pub const MAX_METADATA_LEN: u32 = 256;
+/// Maximum length for offering IDs.
+pub const MAX_OFFERING_ID_LEN: u32 = 64;
+
 #[contract]
 pub struct CalloraVault;
 
@@ -501,6 +506,16 @@ impl CalloraVault {
     ) -> String {
         caller.require_auth();
         Self::require_owner(env.clone(), caller.clone());
+
+        assert!(
+            offering_id.len() <= MAX_OFFERING_ID_LEN,
+            "offering_id exceeds max length"
+        );
+        assert!(
+            metadata.len() <= MAX_METADATA_LEN,
+            "metadata exceeds max length"
+        );
+
         env.storage()
             .instance()
             .set(&StorageKey::Metadata(offering_id.clone()), &metadata);
@@ -533,6 +548,16 @@ impl CalloraVault {
     ) -> String {
         caller.require_auth();
         Self::require_owner(env.clone(), caller.clone());
+
+        assert!(
+            offering_id.len() <= MAX_OFFERING_ID_LEN,
+            "offering_id exceeds max length"
+        );
+        assert!(
+            metadata.len() <= MAX_METADATA_LEN,
+            "metadata exceeds max length"
+        );
+
         let old: String = env
             .storage()
             .instance()
