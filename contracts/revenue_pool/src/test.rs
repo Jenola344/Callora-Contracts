@@ -490,3 +490,19 @@ fn batch_distribute_success_events() {
         }
     }
 }
+
+#[test]
+#[should_panic(expected = "invalid recipient: cannot distribute to the contract itself")]
+fn distribute_fail() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let _dev = Address::generate(&env);
+    let (pool_addr, client) = create_pool(&env);
+    let (usdc_address, _usdc_client, usdc_admin) = create_usdc(&env, &admin);
+
+    client.init(&admin, &usdc_address);
+    fund_pool(&usdc_admin, &pool_addr, 1000);
+
+    client.distribute(&admin, &pool_addr, &300);
+}
