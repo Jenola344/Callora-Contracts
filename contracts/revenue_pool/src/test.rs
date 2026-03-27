@@ -217,6 +217,4 @@ if let Ok(event_name) = Symbol::try_from_val(&env, &topic_0) {
                 assert!(value == 300 || value == 200);
             }
         }
-    }
-}
 // <--- Add one empty line right here
