@@ -1,14 +1,43 @@
 #[cfg(test)]
 mod settlement_tests {
+    extern crate std;
+
     use crate::{CalloraSettlement, CalloraSettlementClient};
-    use soroban_sdk::{testutils::Address as _, Address, Env};
+    use soroban_sdk::testutils::{Address as _, Ledger as _};
+    use soroban_sdk::{Address, Env};
+    use std::any::Any;
+    use std::panic::{catch_unwind, AssertUnwindSafe};
+
+    fn setup_contract() -> (Env, Address, Address, Address, Address) {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let vault = Address::generate(&env);
+        let third_party = Address::generate(&env);
+        let addr = env.register(CalloraSettlement, ());
+        let client = CalloraSettlementClient::new(&env, &addr);
+        client.init(&admin, &vault);
+        (env, addr, admin, vault, third_party)
+    }
+
+    fn panic_message(err: std::boxed::Box<dyn Any + Send>) -> std::string::String {
+        if let Some(message) = err.downcast_ref::<&str>() {
+            std::string::String::from(*message)
+        } else if let Some(message) = err.downcast_ref::<std::string::String>() {
+            message.clone()
+        } else {
+            std::string::String::from("<non-string panic payload>")
+        }
+    }
 
     #[test]
     fn test_settlement_initialization() {
         let env = Env::default();
         env.mock_all_auths();
+        env.ledger().set_timestamp(1_700_000_000);
         let admin = Address::generate(&env);
         let vault = Address::generate(&env);
+        let developer = Address::generate(&env);
         let addr = env.register(CalloraSettlement, ());
         let client = CalloraSettlementClient::new(&env, &addr);
 
@@ -19,6 +48,11 @@ mod settlement_tests {
 
         let global_pool = client.get_global_pool();
         assert_eq!(global_pool.total_balance, 0);
+        assert_eq!(global_pool.last_updated, 1_700_000_000);
+
+        let all_balances = client.get_all_developer_balances();
+        assert_eq!(all_balances.len(), 0);
+        assert_eq!(client.get_developer_balance(&developer), 0);
     }
 
     #[test]
@@ -57,6 +91,35 @@ mod settlement_tests {
 
         let global_pool = client.get_global_pool();
         assert_eq!(global_pool.total_balance, 0);
+    }
+
+    #[test]
+    fn test_get_developer_balance_when_empty() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let vault = Address::generate(&env);
+        let developer = Address::generate(&env);
+        let addr = env.register(CalloraSettlement, ());
+        let client = CalloraSettlementClient::new(&env, &addr);
+        client.init(&admin, &vault);
+
+        let balance = client.get_developer_balance(&developer);
+        assert_eq!(balance, 0);
+    }
+
+    #[test]
+    fn test_get_all_developer_balances_when_empty() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let vault = Address::generate(&env);
+        let addr = env.register(CalloraSettlement, ());
+        let client = CalloraSettlementClient::new(&env, &addr);
+        client.init(&admin, &vault);
+
+        let all = client.get_all_developer_balances();
+        assert_eq!(all.len(), 0);
     }
 
     #[test]
@@ -232,18 +295,67 @@ mod settlement_tests {
     }
 
     #[test]
-    fn test_admin_can_receive_payment() {
-        let env = Env::default();
-        env.mock_all_auths();
-        let admin = Address::generate(&env);
-        let vault = Address::generate(&env);
-        let addr = env.register(CalloraSettlement, ());
-        let client = CalloraSettlementClient::new(&env, &addr);
-        client.init(&admin, &vault);
+    fn test_receive_payment_authorization_matrix() {
+        enum CallerRole {
+            Vault,
+            Admin,
+            ThirdParty,
+        }
 
-        client.receive_payment(&admin, &500i128, &true, &None);
+        struct Case {
+            name: &'static str,
+            role: CallerRole,
+            expected: Result<(), &'static str>,
+        }
 
-        let global_pool = client.get_global_pool();
-        assert_eq!(global_pool.total_balance, 500i128);
+        let cases = [
+            Case {
+                name: "vault address succeeds",
+                role: CallerRole::Vault,
+                expected: Ok(()),
+            },
+            Case {
+                name: "admin address succeeds",
+                role: CallerRole::Admin,
+                expected: Ok(()),
+            },
+            Case {
+                name: "third party fails",
+                role: CallerRole::ThirdParty,
+                expected: Err("unauthorized: caller must be vault or admin"),
+            },
+        ];
+
+        for case in cases {
+            let (env, addr, admin, vault, third_party) = setup_contract();
+            let client = CalloraSettlementClient::new(&env, &addr);
+            let caller = match case.role {
+                CallerRole::Vault => vault,
+                CallerRole::Admin => admin,
+                CallerRole::ThirdParty => third_party,
+            };
+
+            let result = catch_unwind(AssertUnwindSafe(|| {
+                client.receive_payment(&caller, &100i128, &true, &None);
+            }));
+
+            match case.expected {
+                Ok(()) => {
+                    assert!(result.is_ok(), "expected success for case: {}", case.name);
+                    let global_pool = client.get_global_pool();
+                    assert_eq!(global_pool.total_balance, 100i128);
+                }
+                Err(expected_panic) => {
+                    let err = result.expect_err("expected panic but call succeeded");
+                    let message = panic_message(err);
+                    assert!(
+                        message.contains(expected_panic),
+                        "case: {} (got panic: {})",
+                        case.name,
+                        message
+                    );
+                }
+            }
+        }
     }
 }
