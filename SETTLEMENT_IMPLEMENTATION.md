@@ -44,6 +44,21 @@ const SETTLEMENT_KEY: &str = "settlement";
    - Returns the configured settlement contract address
    - Panic: "settlement address not set"
 
+3. **`set_revenue_pool(env, caller, revenue_pool: Option<Address>)`** (Admin only)
+   - Sets or clears the revenue pool address
+   - Pass `Some(addr)` to configure, `None` to clear
+   - Authorization: Current admin only
+   - Panic: "unauthorized: caller is not admin"
+   - Atomic update — no partial state possible
+   - See `SECURITY.md` for external-transfer justification
+
+4. **`get_revenue_pool(env)`** → `Option<Address>`
+   - Returns the configured revenue pool address, or `None` if unset
+
+**Routing priority**: `settlement` is checked before `revenue_pool` on every
+`deduct` / `batch_deduct`. If neither is set, the vault balance is reduced but
+no token transfer occurs (funds remain in vault). See `SECURITY.md` for details.
+
 3. **`transfer_to_settlement(env, amount)`** (Internal)
    - Transfers USDC from vault to settlement contract
    - Used internally by deduct functions
