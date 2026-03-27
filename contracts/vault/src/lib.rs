@@ -60,12 +60,19 @@ pub enum StorageKey {
     RevenuePool,
     MaxDeduct,
     Metadata(String),
+    PendingOwner,
+    PendingAdmin,
 }
 
 // Replaced by StorageKey enum variants
 
 /// Default maximum single deduct amount when not set at init (no cap).
 pub const DEFAULT_MAX_DEDUCT: i128 = i128::MAX;
+
+/// Maximum length for offering metadata (e.g. IPFS CID or URI).
+pub const MAX_METADATA_LEN: u32 = 256;
+/// Maximum length for offering IDs.
+pub const MAX_OFFERING_ID_LEN: u32 = 64;
 
 #[contract]
 pub struct CalloraVault;
@@ -105,10 +112,31 @@ impl CalloraVault {
         if inst.has(&StorageKey::Meta) {
             panic!("vault already initialized");
         }
+
+        // Validate token and revenue pool are not the vault itself
+        assert!(
+            usdc_token != env.current_contract_address(),
+            "usdc_token cannot be vault address"
+        );
+        if let Some(pool) = &revenue_pool {
+            assert!(
+                pool != &env.current_contract_address(),
+                "revenue_pool cannot be vault address"
+            );
+        }
+
         let balance = initial_balance.unwrap_or(0);
         assert!(balance >= 0, "initial balance must be non-negative");
+
         let min_deposit_val = min_deposit.unwrap_or(0);
+        assert!(min_deposit_val >= 0, "min_deposit must be non-negative");
+
         let max_deduct_val = max_deduct.unwrap_or(DEFAULT_MAX_DEDUCT);
+        assert!(max_deduct_val > 0, "max_deduct must be positive");
+        assert!(
+            min_deposit_val <= max_deduct_val,
+            "min_deposit cannot exceed max_deduct"
+        );
 
         let meta = VaultMeta {
             owner: owner.clone(),
@@ -140,7 +168,7 @@ impl CalloraVault {
         let allowed: Vec<Address> = env
             .storage()
             .instance()
-            .get(&StorageKey::AllowedDepositors)
+            .get(&Symbol::new(&env, ALLOWED_KEY))
             .unwrap_or(Vec::new(&env));
         allowed.contains(&caller)
     }
@@ -156,7 +184,8 @@ impl CalloraVault {
             .expect("vault not initialized")
     }
 
-    /// Transfers the administrative role to a new address.
+    /// Nominates a new administrative address.
+    /// The nominee must call `accept_admin` to finalize the transfer.
     /// Can only be called by the current Admin.
     pub fn set_admin(env: Env, caller: Address, new_admin: Address) {
         caller.require_auth();
@@ -164,7 +193,44 @@ impl CalloraVault {
         if caller != current_admin {
             panic!("unauthorized: caller is not admin");
         }
-        env.storage().instance().set(&StorageKey::Admin, &new_admin);
+        env.storage()
+            .instance()
+            .set(&StorageKey::PendingAdmin, &new_admin);
+
+        env.events().publish(
+            (
+                Symbol::new(&env, "admin_nominated"),
+                current_admin,
+                new_admin,
+            ),
+            (),
+        );
+    }
+
+    /// Accepts the administrative role.
+    /// Can only be called by the pending Admin.
+    pub fn accept_admin(env: Env) {
+        let pending_admin: Address = env
+            .storage()
+            .instance()
+            .get(&StorageKey::PendingAdmin)
+            .expect("no admin transfer pending");
+        pending_admin.require_auth();
+
+        let current_admin = Self::get_admin(env.clone());
+        env.storage()
+            .instance()
+            .set(&StorageKey::Admin, &pending_admin);
+        env.storage().instance().remove(&StorageKey::PendingAdmin);
+
+        env.events().publish(
+            (
+                Symbol::new(&env, "admin_accepted"),
+                current_admin,
+                pending_admin,
+            ),
+            (),
+        );
     }
 
     /// Require that the caller is the owner, panic otherwise.
@@ -269,7 +335,7 @@ impl CalloraVault {
             "unauthorized: only owner or allowed depositor can deposit"
         );
 
-        let mut meta = Self::get_meta(env.clone());
+        let meta = Self::get_meta(env.clone());
         assert!(
             amount >= meta.min_deposit,
             "deposit below minimum: {} < {}",
@@ -404,7 +470,8 @@ impl CalloraVault {
         Self::get_meta(env).balance
     }
 
-    /// Transfers ownership of the vault to a new address.
+    /// Nominates a new owner for the vault.
+    /// The nominee must call `accept_ownership` to finalize the transfer.
     /// Can only be called by the current Owner.
     pub fn transfer_ownership(env: Env, new_owner: Address) {
         let mut meta = Self::get_meta(env.clone());
@@ -414,17 +481,45 @@ impl CalloraVault {
             "new_owner must be different from current owner"
         );
 
+        env.storage()
+            .instance()
+            .set(&StorageKey::PendingOwner, &new_owner);
+
         env.events().publish(
             (
-                Symbol::new(&env, "transfer_ownership"),
-                meta.owner.clone(),
-                new_owner.clone(),
+                Symbol::new(&env, "ownership_nominated"),
+                meta.owner,
+                new_owner,
             ),
             (),
         );
+    }
 
-        meta.owner = new_owner;
+    /// Accepts ownership of the vault.
+    /// Can only be called by the pending Owner.
+    pub fn accept_ownership(env: Env) {
+        let pending_owner: Address = env
+            .storage()
+            .instance()
+            .get(&StorageKey::PendingOwner)
+            .expect("no ownership transfer pending");
+        pending_owner.require_auth();
+
+        let mut meta = Self::get_meta(env.clone());
+        let old_owner = meta.owner.clone();
+        meta.owner = pending_owner;
+
         env.storage().instance().set(&StorageKey::Meta, &meta);
+        env.storage().instance().remove(&StorageKey::PendingOwner);
+
+        env.events().publish(
+            (
+                Symbol::new(&env, "ownership_accepted"),
+                old_owner,
+                meta.owner,
+            ),
+            (),
+        );
     }
 
     /// Withdraws USDC from the vault to the owner.
@@ -504,6 +599,16 @@ impl CalloraVault {
     ) -> String {
         caller.require_auth();
         Self::require_owner(env.clone(), caller.clone());
+
+        assert!(
+            offering_id.len() <= MAX_OFFERING_ID_LEN,
+            "offering_id exceeds max length"
+        );
+        assert!(
+            metadata.len() <= MAX_METADATA_LEN,
+            "metadata exceeds max length"
+        );
+
         env.storage()
             .instance()
             .set(&StorageKey::Metadata(offering_id.clone()), &metadata);
@@ -536,6 +641,16 @@ impl CalloraVault {
     ) -> String {
         caller.require_auth();
         Self::require_owner(env.clone(), caller.clone());
+
+        assert!(
+            offering_id.len() <= MAX_OFFERING_ID_LEN,
+            "offering_id exceeds max length"
+        );
+        assert!(
+            metadata.len() <= MAX_METADATA_LEN,
+            "metadata exceeds max length"
+        );
+
         let old: String = env
             .storage()
             .instance()
@@ -564,3 +679,6 @@ impl CalloraVault {
 
 #[cfg(test)]
 mod test;
+
+#[cfg(test)]
+mod test_init_hardening;
