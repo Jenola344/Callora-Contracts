@@ -91,7 +91,33 @@ Emitted when existing metadata is updated via `update_metadata(offering_id, meta
 
 ---
 
-## Not yet implemented
+### `ownership_nominated`
+| Field   | Location | Type   | Description   |
+|---------|----------|--------|---------------|
+| topic 0 | topics   | Symbol | `"ownership_nominated"` |
+| topic 1 | topics   | Address| current owner |
+| topic 2 | topics   | Address| nominee       |
+| data    | data     | ()     | empty         |
+
+---
+
+### `ownership_accepted`
+| Field   | Location | Type   | Description   |
+|---------|----------|--------|---------------|
+| topic 0 | topics   | Symbol | `"ownership_accepted"` |
+| topic 1 | topics   | Address| old owner     |
+| topic 2 | topics   | Address| new owner     |
+| data    | data     | ()     | empty         |
+
+---
+
+### `admin_nominated`
+| Field   | Location | Type   | Description   |
+|---------|----------|--------|---------------|
+| topic 0 | topics   | Symbol | `"admin_nominated"` |
+| topic 1 | topics   | Address| current admin |
+| topic 2 | topics   | Address| nominee       |
+| data    | data     | ()     | empty         |
 
 - **Pause**: not present in current vault; would indicate pause state change.
 
