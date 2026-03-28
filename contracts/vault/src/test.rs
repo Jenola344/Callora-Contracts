@@ -1419,6 +1419,7 @@ fn metadata_remains_after_ownership_transfer() {
     client.set_metadata(&owner, &offering_id, &metadata);
 
     client.transfer_ownership(&new_owner);
+    client.accept_ownership();
 
     // Metadata should still be accessible
     assert_eq!(client.get_metadata(&offering_id), Some(metadata.clone()));
@@ -1539,7 +1540,7 @@ fn init_with_revenue_pool_stores_address() {
     client.init(
         &owner,
         &usdc,
-        &Some(500), &None,
+        &Some(500),
         &None,
         &None,
         &Some(revenue_pool.clone()),

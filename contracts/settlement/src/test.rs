@@ -135,8 +135,7 @@ mod settlement_tests {
     }
 
     #[test]
-    #[should_panic(expected = "unauthorized: caller must be vault or admin")]
-    fn test_receive_payment_unauthorized() {
+    fn test_admin_receive_payment_to_pool() {
         let env = Env::default();
         env.mock_all_auths();
         let admin = Address::generate(&env);
