@@ -506,8 +506,7 @@ impl CalloraVault {
             Self::transfer_funds(&env, &usdc_token, &settlement, amount);
         } else if let Some(revenue_pool) = inst.get::<StorageKey, Address>(&StorageKey::RevenuePool)
         {
-            let usdc_token: Address = inst.get(&StorageKey::UsdcToken).unwrap();
-            Self::transfer_funds(&env, &usdc_token, &revenue_pool, amount);
+            Self::transfer_to_settlement(env.clone(), amount);
         }
 
         let topics = match &request_id {
@@ -588,8 +587,7 @@ impl CalloraVault {
             Self::transfer_funds(&env, &usdc_token, &settlement, total_amount);
         } else if let Some(revenue_pool) = inst.get::<StorageKey, Address>(&StorageKey::RevenuePool)
         {
-            let usdc_token: Address = inst.get(&StorageKey::UsdcToken).unwrap();
-            Self::transfer_funds(&env, &usdc_token, &revenue_pool, total_amount);
+            Self::transfer_to_settlement(env.clone(), total_amount);
         }
 
         meta.balance
@@ -861,10 +859,19 @@ impl CalloraVault {
     // Internal helpers
     // -----------------------------------------------------------------------
 
-    /// Helper to transfer amount of USDC to a destination.
-    fn transfer_funds(env: &Env, usdc_token: &Address, to: &Address, amount: i128) {
-        let usdc = token::Client::new(env, usdc_token);
-        usdc.transfer(&env.current_contract_address(), to, &amount);
+    fn transfer_to_settlement(env: Env, amount: i128) {
+        let settlement_address: Address = env
+            .storage()
+            .instance()
+            .get(&Symbol::new(&env, SETTLEMENT_KEY))
+            .expect("settlement address not set");
+        let usdc_address: Address = env
+            .storage()
+            .instance()
+            .get(&Symbol::new(&env, USDC_KEY))
+            .expect("vault not initialized");
+        let usdc = token::Client::new(&env, &usdc_address);
+        usdc.transfer(&env.current_contract_address(), &settlement_address, &amount);
     }
 
     /// Panic with `"vault is paused"` when the circuit breaker is active.
