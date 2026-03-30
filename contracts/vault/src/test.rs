@@ -2409,7 +2409,10 @@ fn deposit_one_below_large_min_deposit_panics() {
     usdc_admin.mint(&owner, &999_999);
     usdc_client.approve(&owner, &vault_address, &999_999, &1000);
     let result = client.try_deposit(&owner, &999_999);
-    assert!(result.is_err(), "deposit one below large min_deposit must fail");
+    assert!(
+        result.is_err(),
+        "deposit one below large min_deposit must fail"
+    );
 }
 
 #[test]
